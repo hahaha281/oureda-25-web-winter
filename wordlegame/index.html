@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle 游戏</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #121213;
+            color: #ffffff;
+            padding: 20px;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: #ffffff;
+        }
+
+        .board {
+            display: grid;
+            grid-template-rows: repeat(6, 1fr);
+            gap: 5px;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+        }
+
+        .tile {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border: 2px solid #3a3a3c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+        }
+
+        .keyboard {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            width: 100%;
+        }
+
+        .keyboard-row {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .key {
+            padding: 15px 20px;
+            background-color: #818384;
+            border: none;
+            border-radius: 4px;
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: background-color 0.2s ease;
+        }
+
+        .key:hover {
+            background-color: #5a5a5c;
+        }
+
+        .key.wide {
+            padding: 15px 30px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            color: #121213;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .notification.show {
+            opacity: 1;
+        }
+
+        .reset-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #538d4e;
+            border: none;
+            border-radius: 4px;
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .reset-button:hover {
+            background-color: #457a41;
+        }
+
+        /* 颜色反馈类 */
+        .tile.correct {
+            background-color: #538d4e;
+            border-color: #538d4e;
+            color: white;
+        }
+
+        .tile.present {
+            background-color: #b59f3b;
+            border-color: #b59f3b;
+            color: white;
+        }
+
+        .tile.absent {
+            background-color: #3a3a3c;
+            border-color: #3a3a3c;
+            color: white;
+        }
+
+        .key.correct {
+            background-color: #538d4e !important;
+        }
+
+        .key.present {
+            background-color: #b59f3b !important;
+        }
+
+        .key.absent {
+            background-color: #3a3a3c !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Wordle</h1>
+        <div class="board" id="gameBoard"></div>
+        <div class="keyboard" id="keyboard"></div>
+        <button class="reset-button" id="resetButton">重置游戏</button>
+    </div>
+    <div class="notification" id="notification"></div>
+
+    <script>
+        // 单词库 (示例，可替换为更大的词库)
+        const wordList = [
+            'APPLE', 'BALLS', 'BEACH', 'BIRDS', 'BLOOM', 'BREAD', 'BREEZ', 'BROWN', 'BUILD', 'BUTTE',
+            'CACTI', 'CHAIR', 'CHALK', 'CHEST', 'CHIEF', 'CHILL', 'CHINA', 'CHOIR', 'CHOKE', 'CHOSE',
+            'CLEAN', 'CLEAR', 'CLICK', 'CLOCK', 'CLOUD', 'COAST', 'COINS', 'COLOR', 'COMET', 'CORAL',
+            'COUNT', 'COUGH', 'COULD', 'COVEN', 'COVER', 'COWER', 'CRACK', 'CRAFT', 'CRANE', 'CRASH',
+            'CRATE', 'CRAVE', 'CRAZY', 'CREAM', 'CREPE', 'CRESS', 'CRICK', 'CRIME', 'CRIMP', 'CRISP',
+            // ... 可以在这里添加更多5字母单词
+        ];
+
+        // 游戏状态
+        let answer = '';
+        let currentRow = 0;
+        let currentCol = 0;
+        const boardState = Array(6).fill().map(() => Array(5).fill(''));
+        const keyboardState = {}; // 记录键盘字母状态: 'correct', 'present', 'absent'
+
+        // DOM 元素
+        const gameBoard = document.getElementById('gameBoard');
+        const keyboard = document.getElementById('keyboard');
+        const notification = document.getElementById('notification');
+        const resetButton = document.getElementById('resetButton');
+
+        // 初始化游戏
+        function initGame() {
+            answer = wordList[Math.floor(Math.random() * wordList.length)];
+            currentRow = 0;
+            currentCol = 0;
+            boardState.forEach(row => row.fill(''));
+            for (let key in keyboardState) delete keyboardState[key];
+            
+            renderBoard();
+            renderKeyboard();
+            showNotification('游戏开始！请猜一个5字母单词。', 2000);
+            console.log('答案是: ', answer); // 用于调试，实际游戏中应删除
+        }
+
+        // 渲染游戏面板
+        function renderBoard() {
+            gameBoard.innerHTML = '';
+            boardState.forEach((row, rowIndex) => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'row';
+                row.forEach((cell, colIndex) => {
+                    const tile = document.createElement('div');
+                    tile.className = 'tile';
+                    tile.textContent = cell;
+                    
+                    // 根据状态添加颜色类
+                    if (rowIndex < currentRow || (rowIndex === currentRow && colIndex < currentCol)) {
+                        const state = getTileState(rowIndex, colIndex);
+                        if (state) tile.classList.add(state);
+                    }
+                    
+                    rowDiv.appendChild(tile);
+                });
+                gameBoard.appendChild(rowDiv);
+            });
+        }
+
+        // 获取单个格子的状态
+        function getTileState(row, col) {
+            const letter = boardState[row][col];
+            if (letter === answer[col]) return 'correct';
+            if (answer.includes(letter)) return 'present';
+            return 'absent';
+        }
+
+        // 渲染虚拟键盘
+        function renderKeyboard() {
+            keyboard.innerHTML = '';
+            const rows = [
+                ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+                ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+                ['Z', 'X', 'C', 'V', 'B', 'N', 'M']
+            ];
+
+            rows.forEach(row => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'keyboard-row';
+                row.forEach(key => {
+                    const keyButton = document.createElement('button');
+                    keyButton.className = 'key';
+                    keyButton.textContent = key;
+                    keyButton.dataset.key = key;
+                    
+                    // 根据状态添加颜色类
+                    if (keyboardState[key]) {
+                        keyButton.classList.add(keyboardState[key]);
+                    }
+                    
+                    keyButton.addEventListener('click', () => handleKeyPress(key));
+                    rowDiv.appendChild(keyButton);
+                });
+                keyboard.appendChild(rowDiv);
+            });
+
+            // 添加删除和回车按钮
+            const controlRow = document.createElement('div');
+            controlRow.className = 'keyboard-row';
+            
+            const backspaceKey = document.createElement('button');
+            backspaceKey.className = 'key wide';
+            backspaceKey.textContent = '←';
+            backspaceKey.addEventListener('click', handleBackspace);
+            controlRow.appendChild(backspaceKey);
+            
+            const enterKey = document.createElement('button');
+            enterKey.className = 'key wide';
+            enterKey.textContent = 'ENTER';
+            enterKey.addEventListener('click', handleEnter);
+            controlRow.appendChild(enterKey);
+            
+            keyboard.appendChild(controlRow);
+        }
+
+        // 处理字母键按下
+        function handleKeyPress(key) {
+            if (currentRow >= 6 || currentCol >= 5) return;
+
+            boardState[currentRow][currentCol] = key;
+            currentCol++;
+            renderBoard();
+        }
+
+        // 处理退格键
+        function handleBackspace() {
+            if (currentCol === 0) return;
+            currentCol--;
+            boardState[currentRow][currentCol] = '';
+            renderBoard();
+        }
+
+        // 处理回车键
+        function handleEnter() {
+            if (currentCol < 5) {
+                showNotification('单词长度不足5个字母！', 1000);
+                return;
+            }
+
+            const guess = boardState[currentRow].join('');
+            if (!wordList.includes(guess)) {
+                showNotification('输入的不是有效单词！', 1000);
+                return;
+            }
+
+            // 计算并更新颜色反馈
+            updateColorFeedback(guess);
+
+            // 检查游戏是否胜利
+            if (guess === answer) {
+                showNotification('恭喜你，猜对了！', 3000);
+                setTimeout(() => {
+                    if (confirm('你赢了！再来一局？')) initGame();
+                }, 1000);
+                return;
+            }
+
+            // 检查游戏是否失败
+            currentRow++;
+            if (currentRow >= 6) {
+                showNotification(`游戏结束！答案是: ${answer}`, 3000);
+                setTimeout(() => {
+                    if (confirm('你输了！再来一局？')) initGame();
+                }, 1000);
+                return;
+            }
+
+            currentCol = 0;
+            showNotification(`还剩 ${6 - currentRow} 次机会`, 1000);
+            renderBoard();
+        }
+
+        // 更新颜色反馈（核心算法）
+        function updateColorFeedback(guess) {
+            const answerArray = answer.split('');
+            const guessArray = guess.split('');
+            const tileStates = Array(5).fill(null);
+            const keyUpdates = {};
+
+            // 第一步：标记完全匹配的字母 (绿色)
+            for (let i = 0; i < 5; i++) {
+                if (guessArray[i] === answerArray[i]) {
+                    tileStates[i] = 'correct';
+                    keyUpdates[guessArray[i]] = 'correct'; // 键盘状态优先设为最高级
+                    answerArray[i] = null; // 标记为已使用
+                    guessArray[i] = null;
+                }
+            }
+
+            // 第二步：标记存在但位置错误的字母 (黄色)
+            for (let i = 0; i < 5; i++) {
+                if (guessArray[i] === null) continue; // 跳过已标记的字母
+                const index = answerArray.indexOf(guessArray[i]);
+                if (index !== -1) {
+                    tileStates[i] = 'present';
+                    if (!keyUpdates[guessArray[i]]) { // 仅在键盘状态未被设为更高优先级时更新
+                        keyUpdates[guessArray[i]] = 'present';
+                    }
+                    answerArray[index] = null; // 标记为已使用
+                } else {
+                    tileStates[i] = 'absent';
+                    if (!keyUpdates[guessArray[i]]) { // 仅在键盘状态未被设为更高优先级时更新
+                        keyUpdates[guessArray[i]] = 'absent';
+                    }
+                }
+            }
+
+            // 更新键盘状态
+            Object.assign(keyboardState, keyUpdates);
+
+            // 重新渲染面板和键盘以显示颜色
+            renderBoard();
+            renderKeyboard();
+        }
+
+        // 显示通知
+        function showNotification(message, duration = 2000) {
+            notification.textContent = message;
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, duration);
+        }
+
+        // 绑定物理键盘事件
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toUpperCase();
+            if (/^[A-Z]$/.test(key)) {
+                handleKeyPress(key);
+            } else if (key === 'BACKSPACE') {
+                handleBackspace();
+            } else if (key === 'ENTER') {
+                handleEnter();
+            }
+        });
+
+        // 绑定重置按钮事件
+        resetButton.addEventListener('click', initGame);
+
+        // 启动游戏
+        initGame();
+    </script>
+</body>
+</html>
